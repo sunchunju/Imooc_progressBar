@@ -25,17 +25,19 @@ public class HorizontalProgressbarWithProgress extends ProgressBar {
     private final static int DEFAULT_TEXT_OFFSET = 10;  //dp
 
 
-    private int mTextSize = sp2px(DEFAULT_TEXT_SIZE);
-    private int mTextColor = DEFAULT_TEXT_COLOR;
-    private int mUnReachColor = DEFAULT_COLOR_UNREACH;
-    private int mUnReachHeight = dp2px(DEFAULT_HEIGHT_UNREACH);
-    private int mReachColor = DEFAULT_COLOR_REACH;
-    private int mReachHeight = dp2px(DEFAULT_HEIGHT_REACH);
-    private int mTextOffset = dp2px(DEFAULT_TEXT_OFFSET);
+    protected int mTextSize = sp2px(DEFAULT_TEXT_SIZE);
+    protected int mTextColor = DEFAULT_TEXT_COLOR;
+    protected int mUnReachColor = DEFAULT_COLOR_UNREACH;
+    protected int mUnReachHeight = dp2px(DEFAULT_HEIGHT_UNREACH);
+    protected int mReachColor = DEFAULT_COLOR_REACH;
+    protected int mReachHeight = dp2px(DEFAULT_HEIGHT_REACH);
+    protected int mTextOffset = dp2px(DEFAULT_TEXT_OFFSET);
 
-    private Paint mPaint = new Paint();
+    protected Paint mPaint = new Paint();
 
-    private int mRealWidth;
+    protected int mRealWidth;
+
+    private int mProgress;
 
     public HorizontalProgressbarWithProgress(Context context) {
         this(context,null); //调用两个构造参数的方法
@@ -65,13 +67,12 @@ public class HorizontalProgressbarWithProgress extends ProgressBar {
     @Override
     protected synchronized void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
-
-//        int widthMode = MeasureSpec.getMode(widthMeasureSpec);
-        int widthSize = MeasureSpec.getSize(widthMeasureSpec);
-
+        int widthSize = MeasureSpec.getSize(widthMeasureSpec); //宽度一定是有个值的，不可能是wrap content,所以不需要测量模式
         int height = heightMeasure(heightMeasureSpec);
 
         setMeasuredDimension(widthSize, height);
+
+        mRealWidth = getMeasuredWidth() - getPaddingLeft() - getPaddingRight(); //实际绘制区域宽度
     }
 
     private int heightMeasure(int heightMeasureSpec) {
@@ -81,9 +82,12 @@ public class HorizontalProgressbarWithProgress extends ProgressBar {
         int result = 0;
 
         if (mode == MeasureSpec.EXACTLY){
+            //精确值
             result = size;
         }else {
-            result = (int) (mPaint.descent() - mPaint.ascent() + getMax());
+            //控件的高度值应该是mReachHeight  mUnReachHeight  mTextHeight这三种高度的最大值决定
+            int textHeight = (int) (mPaint.descent() - mPaint.ascent());  //字体高度
+            result = getPaddingTop()+getPaddingBottom()+Math.max(Math.max(mReachHeight, mUnReachHeight), Math.abs(textHeight));
             if (mode == MeasureSpec.AT_MOST){
                 result = Math.min(result,size);
             }
@@ -94,14 +98,41 @@ public class HorizontalProgressbarWithProgress extends ProgressBar {
     @Override
     protected synchronized void onDraw(Canvas canvas) {
 
-        //draw line
-        mRealWidth = getWidth();
-        mPaint.setStrokeWidth(mReachHeight);
-        canvas.drawLine(0,0,mRealWidth, 0, mPaint);
+        canvas.save();
+        canvas.translate(getPaddingLeft(),getHeight()/2);  //移动坐标
+
+        //draw reach bar
+        float radio = getProgress()*1.0f/getMax();  //绘制的长度占mRealWidth的百分比
+        boolean noNeedUnRech = false;   //不需要绘制未到达区域
+        String text = getProgress()+"%";
+        int textWidth = (int) mPaint.measureText(text);
+        float progressX = radio*mRealWidth;
+        if (progressX + textWidth > mRealWidth){
+            progressX = mRealWidth - textWidth;
+            noNeedUnRech = true;
+        }
+
+        float endX = progressX - mTextOffset/2;  //去除mTextOffset
+        if (endX > 0){
+            mPaint.setColor(mReachColor);
+            mPaint.setStrokeWidth(mReachHeight);
+            canvas.drawLine(0,0,endX,0,mPaint);
+        }
 
         //draw text
-        
+        mPaint.setColor(mTextColor);
+        int y = (int)(-(mPaint.descent()+mPaint.ascent())/2);
+        canvas.drawText(text, progressX, y, mPaint);
 
+        //draw unreach bar
+        if(!noNeedUnRech){
+            float start = progressX+mTextOffset/2+textWidth;
+            mPaint.setColor(mUnReachColor);
+            mPaint.setStrokeWidth(mUnReachHeight);
+            canvas.drawLine(start,0,mRealWidth,0,mPaint);
+        }
+
+        canvas.restore();
     }
 
     /**
@@ -112,7 +143,7 @@ public class HorizontalProgressbarWithProgress extends ProgressBar {
      *            （DisplayMetrics类中属性scaledDensity）
      * @return
      */
-    private int sp2px(int spValue) {
+    protected int sp2px(int spValue) {
         final float fontScale = getContext().getResources().getDisplayMetrics().scaledDensity;
         return (int) (spValue * fontScale + 0.5f);
     }
@@ -125,8 +156,23 @@ public class HorizontalProgressbarWithProgress extends ProgressBar {
      *            （DisplayMetrics类中属性density）
      * @return
      */
-    private int dp2px(int dpValue) {
+    protected int dp2px(int dpValue) {
         final float scale = getContext().getResources().getDisplayMetrics().density;
         return (int) (dpValue * scale + 0.5f);
+    }
+
+    @Override
+    public synchronized void setProgress(int progress) {
+        if (progress > getMax()){
+            mProgress = getMax();
+        }else {
+            mProgress = progress;
+            postInvalidate();
+        }
+    }
+
+    @Override
+    public synchronized int getProgress() {
+        return mProgress;
     }
 }
